@@ -1,32 +1,4 @@
-﻿var listen = (function () {
-	var listen;
-
-	if (window.addEventListener) {
-		listen = function (element, event, listener, capture) {
-			return element.addEventListener(event, listener, capture);
-		};
-		listen.remove = function (element, event, listener, capture) {
-			return element.removeEventListener(event, listener, capture);
-		};
-	}
-	else if (window.attachEvent) {
-		listen = function (element, event, listener, capture) {
-			return element.attachEvent("on" + event, listener, capture);
-		};
-		listen.remove = function (element, event, listener, capture) {
-			return element.detachEvent(event, listener, capture);
-		};
-	}
-	else {
-		console.warn("Browser does not support events.");
-		listen = function () { };
-		listen.remove = listen;
-	}
-
-	return listen;
-})();
-
-// loosely based on: https://gist.github.com/Contra/2709462
+﻿// loosely based on: https://gist.github.com/Contra/2709462
 if (!window.XMLHttpRequest) { // shim XMLHttpRequest
 	window.XMLHttpRequest = (function () {
 		var ax = ["Msxml2.XMLHTTP", "Microsoft.XMLHTTP", "Msxml2.XMLHTTP.4.0"];
@@ -40,87 +12,68 @@ if (!window.XMLHttpRequest) { // shim XMLHttpRequest
 	})();
 }
 
-var Ajax = (function () {
-	function Ajax(url, callback, context) {
-		return full(url, null, null, null, null, null, null, null, null, null, callback, context);
-	}
-	Ajax.get = function (url, callback, context) {
-		return full(url, "GET", null, null, null, null, null, null, null, null,callback, context);
-	};
-	Ajax.post = function (url, data, callback, context) {
-		return full(url, "POST", null, null, data, null, null, null, null, null,callback, context);
-	};
-	Ajax.full = full;
+var $ = function (selector) {
+	return ($.proxy || document).querySelectorAll(selector);
+};
+$.proxy = null;
 
-	function full(url, method, mime, type, data, headers, username, password, withCred, timeout, callback, context) {
-		var xhr = new XMLHttpRequest();
+var render = (function () {
+	var templates = {};
 
-		if (mime) { xhr.overrideMimeType(mime); }
+	var currentTemplate = null;
 
-		if (headers) {
-			for (var name in headers) {
-				if (headers.hasOwnProperty(name)) {
-					xhr.setRequestHeader(name, headers[name]);
-				}
-			}
+	var rendered = false, currentCallback;
+	function checkReady() {
+		if ((currentTemplate in templates) && ($.proxy !== null)) {
+			document.body.innerHTML = templates[currentTemplate]();
+			rendered = true;
+			$.proxy = null;
+			proxy.innerHTML = "";
+			if (currentCallback) { currentCallback(); }
 		}
-
-		if (callback) {
-			if (type) { xhr.responseType = type || ""; }
-
-			xhr.onreadystatechange = function () {
-				callback.call(context, "readyStateChange", xhr);
-
-				if (xhr.readyState === 4) {
-					callback.call(context, "done", xhr);
-				}
-			};
-
-			if (timeout != null) { xhr.timeout = timeout; }
-			xhr.ontimeout = function () {
-				callback.call(context, "timeout", xhr);
-			};
-
-			if (withCred != null) {
-				xhr.withCredentials = withCred;
-			}
-
-			if (xhr.upload) {
-				xhr.upload.onloadstart =
-				xhr.upload.onprogress =
-				xhr.upload.onabort =
-				xhr.upload.onerror =
-				xhr.upload.onload =
-				xhr.upload.onloadend = function (e) {
-					callback.call(context, "upload-" + e.type, e, xhr);
-				};
-			}
-		}
-
-		xhr.open(method || "GET", url, !!callback, username, password);
-
-		xhr.send(data);
-
-		return xhr;
 	}
 
-	return Ajax;
-})();
+	var proxy = document.createElement("PROXY");
+	function render(url, callback, loaded) {
+		currentCallback = callback;
+		rendered = false;
 
-document.write(
-	'<meta charset="utf-8" />' +
-	'<meta http-equiv="X-UA-Compatible" content="IE=edge" />' +
-	'<meta name="viewport" content="width=device-width, initial-scale=1" />'+
-	'<!--'
-);
+		if (!loaded) {
+			var page = new XMLHttpRequest();
+			page.onreadystatechange = function () {
+				if (page.readyState === 4) {
+					var HTML = page.responseText;
+					var findLanding = /<script src="landing\.js" type="text\/javascript">([\W\w]*?)<\/script>/;
 
-eval(document.head.firstChild.innerHTML);
 
-var templates = {};
+					var found = findLanding.exec(HTML);
+					if (!found) { throw "Invalid content file"; }
+					eval(found[1]);
 
-var createTemplate = (function () {
-	var find=/<!--([\W\w]*?)-->|"|\r?\n/g;
-	function replace(match, dynamic) {
+					proxy.innerHTML = page.responseText.substring(found.index + found[0].length);
+					$.proxy = proxy;
+
+					getTemplate(template);
+
+					checkReady();
+				}
+			};
+			page.open("GET", url, true);
+			page.send();
+		}
+		else {
+			var content = document.head.innerHTML.match(/<!--[\W\w]*?-->/)[0];
+			proxy.innerHTML = content.substring(4, content.length - 3);
+			$.proxy = proxy;
+			checkReady();
+
+			eval(document.head.firstChild.innerHTML);
+			getTemplate(template);
+		}
+	}
+	
+	var findDyn = /<!--([\W\w]*?)-->|"|\r?\n/g;
+	function replaceDyn(match, dynamic) {
 		if (dynamic) { return "\" + " + dynamic + " + \""; }
 		else {
 			switch (match) {
@@ -130,39 +83,81 @@ var createTemplate = (function () {
 		}
 	}
 
-	return function createTemplate(source) {
-		return new Function("return \"" + source.replace(find, replace) + "\";");
+	function getTemplate(template) {
+		if (rendered) { return; }
+
+		currentTemplate = template;
+
+		if (template in templates) {
+			checkReady();
+		}
+		else {
+			var xhr = new XMLHttpRequest();
+			xhr.onreadystatechange = function () {
+				if (xhr.readyState === 4) {
+					templates[template] = new Function("return \"" + xhr.responseText.replace(findDyn, replaceDyn) + "\";");
+					checkReady();
+				}
+			};
+			xhr.open("GET", template, true);
+			xhr.send();
+		}
+	}
+
+	return render;
+})();
+
+var addScript = (function () {
+	var codes = [];
+	var added = 0, adding = 0;
+	function loaded(index, code) {
+		if (index != added) {
+			codes[index - added - 1] = code;
+		}
+		else {
+			added++;
+
+			while (codes[0]) {
+				code += ";\n\n" + codes.shift();
+				added++;
+			}
+
+			var script = document.head.appendChild(document.createElement("SCRIPT"));
+			script.type = "text/javascript";
+			script.innerHTML = code;
+		}
+	}
+
+	return function addScript(url) {
+		var index = adding++;
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function () {
+			if (xhr.readyState === 4) {
+				if (url === "listen.js") {
+					setTimeout(function () { loaded(index, xhr.responseText); }, 500);
+				}
+				else {
+					loaded(index, xhr.responseText);
+				}
+			}
+		};
+		xhr.open("GET", url, true);
+		xhr.send();
 	};
 })();
 
-var xhr = Ajax(template, function (event, xhr) {
-	if (event === "done") {
-		templates[template] = createTemplate(xhr.responseText);
-		ready();
-	}
-});
+document.write(
+	'<meta charset="utf-8" />' +
+	'<meta http-equiv="X-UA-Compatible" content="IE=edge" />' +
+	'<meta name="viewport" content="width=device-width, initial-scale=1" />' +
+	'<!--'
+);
 
-var ready = (function () {
-	var count = 0;
-	return function ready() {
-		if (++count >= 2) {
-			var proxy = $.proxy = document.createElement("DIV");
-			proxy.id = "proxy-" + ("" + Math.random()).substring(2);
+window.onload = function () {
+	window.onload = null;
 
-			var content = document.head.innerHTML.match(/<!--[\W\w]*?-->/)[0];
-			proxy.innerHTML = content.substring(4, content.length - 3);
+	addScript("listen.js");
+	addScript("loaded.js");
 
-			document.body.innerHTML = templates[template]();
-		}
-		console.log(count);
-	}
-})();
-
-var $ = function (selector) {
-	return ($.proxy || document).querySelectorAll(selector);
+	render(window.location.href, null, true);
 };
-$.proxy = null;
-
-listen(window, "load", function () {
-	ready();
-});

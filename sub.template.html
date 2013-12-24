@@ -1,7 +1,7 @@
 ﻿<!--(function(){
 	// document.title = $("h1")[0].innerHTML;
 	
-	console.log("main.template.html rendered");
+	console.log("sub.template.html rendered");
 
 	return "";
 })()-->
@@ -9,9 +9,13 @@
 
 <title><!-- $("h1")[0].innerHTML --> | Dynamic Site</title>
 <link href="styles.css" rel="stylesheet" type="text/css" />
+<style type="text/css">
+	body {background-color:black; color:white;}
+	a {color:lightblue;}
+</style>
 
 <article>
-	<h1><!-- $("h1")[0].innerHTML --></h1>
+	<h1><u><!-- $("h1")[0].innerHTML --></u></h1>
 	<section>
 		<!-- $("#content")[0].innerHTML -->
 	</section>
