@@ -10,7 +10,7 @@
 		};
 	}
 
-	if (false && history.pushState && ("onpopstate" in window)) {
+	if (history.pushState && ("onpopstate" in window)) {
 		gotoUrl = function (url) {
 			if (gotoUrl.loading) {
 				console.log("Aborting loading " + url + "; already loading " + window.location.href);
